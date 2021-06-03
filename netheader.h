@@ -1,0 +1,18 @@
+#ifndef NETHEADER_H
+#define NETHEADER_H
+
+enum MSG_TYPE
+{
+    IMG_SEND = 0,
+    IMG_RECV,
+    AUDIO_SEND,
+    AUDIO_RECV,
+    TEXT_SEND,
+    TEXT_RECV,
+    CREATE_MEETING,
+    EXIT_MEETING,
+    JOIN_MEETING
+};
+
+
+#endif // NETHEADER_H

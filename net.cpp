@@ -1,6 +1,6 @@
 #include "unp.h"
 
-ssize_t	 Readn(int fd, void * buf, size_t size)
+ssize_t	Readn(int fd, void * buf, size_t size)
 {
     ssize_t lefttoread = size, hasread = 0;
     char *ptr = (char *)buf;

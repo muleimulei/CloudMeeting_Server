@@ -26,6 +26,9 @@ int main(int argc, char **argv)
     }
 
     int nthreads = atoi(argv[argc - 1]);
+
+    printf("total threads: %d\n", nthreads);
+
     tptr = (Thread *)Calloc(nthreads, sizeof(Thread));
 
     for(i = 0; i < nthreads; i++)
@@ -48,5 +51,7 @@ void thread_make(int i)
     void * thread_main(void *);
     int *arg = (int *) Calloc(1, sizeof(int));
     *arg = i;
+//    printf(" %d\n", *arg);
+
     Pthread_create(&tptr[i].thread_tid, NULL, thread_main, arg);
 }

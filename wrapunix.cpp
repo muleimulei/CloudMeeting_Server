@@ -10,4 +10,5 @@ void * Calloc(size_t n, size_t size)
         errno = ENOMEM;
         err_quit("Calloc error");
     }
+    return ptr;
 }
