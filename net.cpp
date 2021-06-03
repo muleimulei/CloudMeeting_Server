@@ -213,3 +213,10 @@ int Accept(int listenfd, SA * addr, socklen_t *addrlen)
         }
     }
 }
+void Socketpair(int family, int type, int protocol, int * sockfd)
+{
+    if(socketpair(family, type, protocol, sockfd) < 0)
+    {
+        err_quit("socketpair error");
+    }
+}

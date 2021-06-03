@@ -7,7 +7,7 @@ pthread_mutex_t mlock = PTHREAD_MUTEX_INITIALIZER; // accept lock
 extern socklen_t addrlen;
 extern int listenfd;
 
-void * thread_main(void *arg)
+void* thread_main(void *arg)
 {
     void dowithuser(int connfd);
     int i = *(int *)arg;
@@ -39,6 +39,13 @@ void * thread_main(void *arg)
     return NULL;
 }
 
+void process_main(int i, int fd) // room start
+{
+
+}
+
+
+
 void dowithuser(int connfd)
 {
     char head[15]  = {0};
@@ -60,24 +67,23 @@ void dowithuser(int connfd)
         ip = ntohl(ip);
 
 
-
         MSG_TYPE msgtype;
         memcpy(&msgtype, head + 5, 2);
         msgtype = (MSG_TYPE)ntohs(msgtype);
 
-        printf("type: %d\n", msgtype);
-
         uint32_t msgsize;
         memcpy(&msgsize, head + 7, 4);
         msgsize = ntohl(msgsize);
-        printf("size: %d\n", msgsize);
-
 
         if(msgtype == CREATE_MEETING)
         {
             if(head[11] == '#' && msgsize == 12)
             {
                 printf("create meeting\n");
+                //create meeting
+
+
+                //write(connfd, "helloworld", 10);
             }
             else
             {

@@ -12,6 +12,12 @@ typedef struct
     pthread_t thread_tid;
 }Thread;
 
+typedef struct
+{
+    pid_t child_pid; //process id
+    int child_pipefd; //parent's stream pipe to/from child
+    int child_status; //0=ready
+}Process;
 
 
 void	Pthread_create(pthread_t *, const pthread_attr_t *,
