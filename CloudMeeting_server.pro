@@ -8,7 +8,8 @@ SOURCES += main.cpp \
     net.cpp \
     unpthread.cpp \
     wrapunix.cpp \
-    userdeal.cpp
+    userdeal.cpp \
+    room.cpp
 
 HEADERS += \
     unp.h \

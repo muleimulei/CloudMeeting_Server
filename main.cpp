@@ -4,9 +4,36 @@
 using namespace std;
 
 Thread * tptr;
-Process *pptr;
 socklen_t addrlen;
 int listenfd;
+int navail, nprocesses;
+
+typedef struct Room // single
+{
+    int navail;
+    Process *pptr;
+    pthread_mutex_t lock;
+
+    Room (int n)
+    {
+        navail = n;
+        pptr = (Process *)Calloc(n, sizeof(Process));
+        lock = PTHREAD_MUTEX_INITIALIZER;
+    }
+}Room;
+
+Room *room;
+//typedef struct Room_Pool
+//{
+//    Room *room_pool[100]; //pool
+//    int num;
+
+//    Room_Pool()
+//    {
+//        memset(room_pool, 0, sizeof(room_pool));
+//        num = 0;
+//    }
+//}Room_Pool;
 
 int main(int argc, char **argv)
 {
@@ -31,21 +58,24 @@ int main(int argc, char **argv)
     }
     maxfd = listenfd;
     int nthreads = atoi(argv[argc - 2]);
-    int nprocesses = atoi(argv[argc-1]);
+    nprocesses = atoi(argv[argc-1]);
 
-    printf("total threads: %d\n", nthreads);
+    //init room
+    room = new Room(nprocesses);
+
+    printf("total threads: %d  total process: %d\n", nthreads, nprocesses);
 
     tptr = (Thread *)Calloc(nthreads, sizeof(Thread));
-    pptr = (Process *)Calloc(nprocesses, sizeof(Process));
 
-
+    //process pool----room
     for(i = 0; i < nprocesses; i++)
     {
         process_make(i, listenfd);
-        FD_SET(pptr[i].child_pipefd, &masterset);
-        maxfd = max(maxfd, pptr[i].child_pipefd);
+        FD_SET(room->pptr[i].child_pipefd, &masterset);
+        maxfd = max(maxfd, room->pptr[i].child_pipefd);
     }
 
+    //thread pool
     for(i = 0; i < nthreads; i++)
     {
         thread_make(i);
@@ -53,7 +83,34 @@ int main(int argc, char **argv)
     for(;;)
     {
         //listen
-        pause();
+        rset = masterset;
+        // use out of room
+//        if(room->navail <=0)
+//        {
+//            printf("use out of room\n");
+//            continue;
+//        }
+        int nsel = Select(maxfd + 1, &rset, NULL, NULL, NULL);
+        if(nsel == 0) continue;
+
+        //find any room useful
+        for(i = 0; i < nprocesses; i++)
+        {
+            if(FD_ISSET(room->pptr[i].child_pipefd, &rset))
+            {
+                int rc, n;
+                if(( n = Readn(room->pptr[i].child_pipefd, &rc, 1)) <= 0)
+                {
+                    err_quit("child %d terminated unexpectedly", i);
+                }
+                pthread_mutex_lock(&room->lock);
+                room->pptr[i].child_status = 0;
+                room->navail++;
+                printf("room %d is now free\n", room->pptr[i].child_pid);
+                pthread_mutex_unlock(&room->lock);
+            }
+            if(--nsel == 0) break; /*all done with select results*/
+        }
     }
     return 0;
 }
@@ -80,9 +137,9 @@ void process_make(int i, int listenfd)
     {
         Close(sockfd[1]);
 
-        pptr[i].child_pid = pid;
-        pptr[i].child_pipefd = sockfd[0];
-        pptr[i].child_status = 0;
+        room->pptr[i].child_pid = pid;
+        room->pptr[i].child_pipefd = sockfd[0];
+        room->pptr[i].child_status = 0;
 
         return pid; // father
     }

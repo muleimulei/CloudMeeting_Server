@@ -39,10 +39,6 @@ void* thread_main(void *arg)
     return NULL;
 }
 
-void process_main(int i, int fd) // room start
-{
-
-}
 
 
 
@@ -65,7 +61,6 @@ void dowithuser(int connfd)
         uint32_t ip;
         memcpy(&ip, head + 1, 4);
         ip = ntohl(ip);
-
 
         MSG_TYPE msgtype;
         memcpy(&msgtype, head + 5, 2);
