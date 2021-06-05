@@ -4,7 +4,7 @@
 /* Our own header for the programs that use threads.
    Include this file, instead of "unp.h". */
 #include <pthread.h>
-
+#include "unp.h"
 typedef void * (THREAD_FUNC) (void *);
 
 typedef struct
@@ -19,6 +19,19 @@ typedef struct
     int child_status; //0=ready
 }Process;
 
+typedef struct Room // single
+{
+    int navail;
+    Process *pptr;
+    pthread_mutex_t lock;
+
+    Room (int n)
+    {
+        navail = n;
+        pptr = (Process *)Calloc(n, sizeof(Process));
+        lock = PTHREAD_MUTEX_INITIALIZER;
+    }
+}Room;
 
 void	Pthread_create(pthread_t *, const pthread_attr_t *,
                        void * (*)(void *), void *);

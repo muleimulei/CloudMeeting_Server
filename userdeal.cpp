@@ -1,11 +1,13 @@
 #include "unpthread.h"
 #include <stdlib.h>
-#include <unp.h>
+#include "unp.h"
 #include "netheader.h"
 
 pthread_mutex_t mlock = PTHREAD_MUTEX_INITIALIZER; // accept lock
 extern socklen_t addrlen;
 extern int listenfd;
+extern int nprocesses;
+extern Room *room;
 
 void* thread_main(void *arg)
 {
@@ -51,9 +53,9 @@ void dowithuser(int connfd)
     {
         printf("peer close\n");
     }
-    else if(ret < 12)
+    else if(ret < 12 || head[0] != '$')
     {
-        printf("data format error\n");
+        printf("data len too short\n");
     }
     else
     {
@@ -74,10 +76,42 @@ void dowithuser(int connfd)
         {
             if(head[11] == '#' && msgsize == 12)
             {
-                printf("create meeting\n");
-                //create meeting
+                char *c = (char *)&ip;
+                printf("create meeting  ip: %d.%d.%d.%d\n", c[0], c[1], c[2], c[3]);
+                if(room->navail <=0)
+                {
+                    write(connfd, "NoRoom", 7);
+                }
+                else
+                {
+                    int i;
+                    //find room empty
+                    Pthread_mutex_lock(&room->lock);
 
-
+                    for(i = 0; i < nprocesses; i++)
+                    {
+                        if(room->pptr[i].child_status == 0) break;
+                    }
+                    if(i == nprocesses) //no room empty
+                    {
+                        write(connfd, "NoRoom", 7);
+                    }
+                    else
+                    {
+                        char cmd = 'C';
+                        if(write_fd(room->pptr[i].child_pipefd, &cmd, 1, connfd) < 0)
+                        {
+                            printf("write fd error");
+                        }
+                        else
+                        {
+                            printf("room %d empty\n", room->pptr[i].child_pid);
+                            room->pptr[i].child_status = 1; // occupy
+                            room->navail--;
+                        }
+                    }
+                    Pthread_mutex_unlock(&room->lock);
+                }
                 //write(connfd, "helloworld", 10);
             }
             else

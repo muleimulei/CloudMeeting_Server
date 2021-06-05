@@ -8,20 +8,6 @@ socklen_t addrlen;
 int listenfd;
 int navail, nprocesses;
 
-typedef struct Room // single
-{
-    int navail;
-    Process *pptr;
-    pthread_mutex_t lock;
-
-    Room (int n)
-    {
-        navail = n;
-        pptr = (Process *)Calloc(n, sizeof(Process));
-        lock = PTHREAD_MUTEX_INITIALIZER;
-    }
-}Room;
-
 Room *room;
 //typedef struct Room_Pool
 //{
@@ -37,6 +23,8 @@ Room *room;
 
 int main(int argc, char **argv)
 {
+    void sig_chld(int signo);
+    Signal(SIGCHLD, sig_chld);
     int i,maxfd;
     void thread_make(int);
     void process_make(int, int);
@@ -93,7 +81,7 @@ int main(int argc, char **argv)
         int nsel = Select(maxfd + 1, &rset, NULL, NULL, NULL);
         if(nsel == 0) continue;
 
-        //find any room useful
+        //set room status to 0(empty)
         for(i = 0; i < nprocesses; i++)
         {
             if(FD_ISSET(room->pptr[i].child_pipefd, &rset))
@@ -126,7 +114,7 @@ void thread_make(int i)
 }
 
 
-void process_make(int i, int listenfd)
+int process_make(int i, int listenfd)
 {
     int sockfd[2];
     pid_t pid;

@@ -85,7 +85,7 @@ char *Sock_ntop(char * str, int size ,const sockaddr * sa, socklen_t salen)
             return str;
         }
      default:
-        return "srever error";
+        return "server error";
     }
     return NULL;
 }
