@@ -27,6 +27,7 @@
 #include	<sys/wait.h>
 #include	<sys/un.h>		/* for Unix domain sockets */
 #include    <arpa/inet.h>
+#include    <pthread.h>
 
 #ifdef	HAVE_SYS_SELECT_H
 # include	<sys/select.h>	/* for convenience */
@@ -200,8 +201,8 @@
 
 typedef	void	Sigfunc(int);	/* for signal handlers */
 
-#define	min(a,b)	((a) < (b) ? (a) : (b))
-#define	max(a,b)	((a) > (b) ? (a) : (b))
+#define	MIN(a,b)	((a) < (b) ? (a) : (b))
+#define	MAX(a,b)	((a) > (b) ? (a) : (b))
 
 /* end unph */
 

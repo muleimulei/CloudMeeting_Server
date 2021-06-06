@@ -14,6 +14,7 @@ SOURCES += main.cpp \
 HEADERS += \
     unp.h \
     unpthread.h \
-    netheader.h
+    netheader.h \
+    msg.h
 
 LIBS += -pthread
