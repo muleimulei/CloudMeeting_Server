@@ -124,11 +124,9 @@ int process_make(int i, int listenfd)
     if((pid = fork()) > 0)
     {
         Close(sockfd[1]);
-
         room->pptr[i].child_pid = pid;
         room->pptr[i].child_pipefd = sockfd[0];
         room->pptr[i].child_status = 0;
-
         return pid; // father
     }
 

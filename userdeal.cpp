@@ -77,7 +77,7 @@ void dowithuser(int connfd)
             if(head[11] == '#' && msgsize == 12)
             {
                 char *c = (char *)&ip;
-                printf("create meeting  ip: %d.%d.%d.%d\n", c[0], c[1], c[2], c[3]);
+                printf("create meeting  ip: %d.%d.%d.%d\n", (unsigned char )c[3], (unsigned char )c[2], (uint)c[1], (uint)c[0]);
                 if(room->navail <=0)
                 {
                     write(connfd, "NoRoom", 7);

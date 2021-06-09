@@ -297,7 +297,7 @@ ssize_t read_fd(int fd, void *ptr, size_t nbytes, int *recvfd)
 
     //-------------------------
     msg.msg_name = NULL;
-    msg.msg_controllen = 0;
+    msg.msg_namelen = 0;
 
     iov[0].iov_base = ptr;
     iov[0].iov_len = nbytes;

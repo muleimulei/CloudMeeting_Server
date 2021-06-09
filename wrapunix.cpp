@@ -2,6 +2,7 @@
 
 void sig_chld(int signo) //signal action
 {
+    printf("signal\n");
     pid_t pid;
     int stat;
     while((pid = waitpid(-1, &stat, WNOHANG)) > 0)

@@ -36,7 +36,7 @@ void Pthread_mutex_lock(pthread_mutex_t *mptr)
     else
     {
         errno = n;
-        err_quit("pthread_mutex_lock lock");
+        err_quit("pthread_mutex_lock error");
     }
 }
 
@@ -50,16 +50,34 @@ void Pthread_mutex_unlock(pthread_mutex_t *mptr)
     else
     {
         errno = n;
-        err_quit("pthread_mutex_unlock lock");
+        err_quit("pthread_mutex_unlock error");
     }
 }
 
 
-void Pthread_cond_signal(pthread_cond_t *)
+void Pthread_cond_signal(pthread_cond_t *cond)
 {
-
+    int n;
+    if((n = pthread_cond_signal(cond)) == 0)
+    {
+        return;
+    }
+    else
+    {
+        errno = n;
+        err_quit("Pthread_cond_signal error");
+    }
 }
-void Pthread_cond_wait(pthread_cond_t *, pthread_mutex_t *)
+void Pthread_cond_wait(pthread_cond_t * cond, pthread_mutex_t *lock)
 {
-
+    int n;
+    if((n = pthread_cond_wait(cond, lock)) == 0)
+    {
+        return;
+    }
+    else
+    {
+        errno = n;
+        err_quit("Pthread_cond_wait error");
+    }
 }

@@ -2,19 +2,22 @@
 #define MSG_H
 
 #include <queue>
-
 #include "unp.h"
 #include "unpthread.h"
 #include "netheader.h"
 #define MAXSIZE 10000
+#define MB (1024*1024)
 struct MSG
 {
     char *ptr;
-    long long len;
+    int len;
     int targetfd;
     MSG_TYPE msgType;
+    MSG()
+    {
 
-    MSG(MSG_TYPE msg_type, char *msg, long long length, int fd)
+    }
+    MSG(MSG_TYPE msg_type, char *msg, int length, int fd)
     {
         msgType = msg_type;
         ptr = msg;
