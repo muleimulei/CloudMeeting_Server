@@ -87,8 +87,10 @@ void dowithuser(int connfd)
 
         if(msgtype == CREATE_MEETING)
         {
+            char tail;
+            Readn(connfd, &tail, 1);
             //read data from client
-            if(datasize == 0)
+            if(datasize == 0 && tail == '#')
             {
                 char *c = (char *)&ip;
                 printf("create meeting  ip: %d.%d.%d.%d\n", (unsigned char )c[3], (unsigned char )c[2], (uint)c[1], (uint)c[0]);

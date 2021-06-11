@@ -22,6 +22,7 @@ struct MSG
     int len;
     int targetfd;
     MSG_TYPE msgType;
+    uint32_t ip;
     MSG()
     {
 

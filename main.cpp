@@ -96,8 +96,11 @@ int main(int argc, char **argv)
                 room->navail++;
                 printf("room %d is now free\n", room->pptr[i].child_pid);
                 pthread_mutex_unlock(&room->lock);
+
+
+                if(--nsel == 0) break; /*all done with select results*/
             }
-            if(--nsel == 0) break; /*all done with select results*/
+
         }
     }
     return 0;

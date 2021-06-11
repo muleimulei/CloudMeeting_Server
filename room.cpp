@@ -9,6 +9,8 @@ enum USER_TYPE
     GUEST=2,
     OWNER
 };
+static volatile int maxfd;
+STATUS roomstatus = ON;
 
 typedef struct pool
 {
@@ -16,7 +18,6 @@ typedef struct pool
     pthread_mutex_t lock;
     int owner;
     int num;
-//    int fds[1024 + 10];
     int status[1024 + 10];
     pool()
     {
@@ -24,23 +25,31 @@ typedef struct pool
         owner = 0;
         FD_ZERO(&fdset);
         lock = PTHREAD_MUTEX_INITIALIZER;
-//        memset(fds, 0, sizeof(fds));
         num = 0;
     }
 
     void clear_room()
     {
         Pthread_mutex_lock(&lock);
+        roomstatus = CLOSE;
+        for(int i = 0; i <= maxfd; i++)
+        {
+            if(status[i] == ON)
+            {
+                close(i);
+            }
+        }
+        memset(status, 0, sizeof(status));
+        num = 0;
         owner = 0;
         FD_ZERO(&fdset);
-        num = 0;
-        memset(fds, 0, sizeof(fds));
+        Pthread_mutex_unlock(&lock);
     }
 }Pool;
 
 Pool * user_pool = new Pool();
-static int maxfd;
 
+// room process
 void process_main(int i, int fd) // room start
 {
     //create accpet fd thread
@@ -48,7 +57,7 @@ void process_main(int i, int fd) // room start
     pthread_t pfd1;
     void* accept_fd(void *);
     void* send_func(void *);
-    void* readData(void *);
+    void  fdclose(int, int);
 
     int *ptr = (int *)malloc(4);
     *ptr = fd;
@@ -61,52 +70,74 @@ void process_main(int i, int fd) // room start
     //listen read data from fds
     for(;;)
     {
-        fd_set rset;
+        fd_set rset = user_pool->fdset;
         int nsel;
         struct timeval time;
         memset(&time, 0, sizeof(struct timeval));
-        while((nsel =  Select(maxfd + 1, &rset, NULL, NULL, &time))== 0)
+        while((nsel = Select(maxfd + 1, &rset, NULL, NULL, &time))== 0)
         {
             rset = user_pool->fdset; // make sure rset update
         }
-
-        for(int i = 0; i < user_pool->num; i++)
+        for(int i = 0; i <= maxfd; i++)
         {
             //check data arrive
-            if(FD_ISSET(user_pool->fds[i], &rset))
+            if(FD_ISSET(i, &rset))
             {
-                int *fd = (int *)malloc(sizeof(int));
-                *fd = user_pool->fds[i];
-                Pthread_create(&pfd1, NULL, readData, fd);
+                char head[15] = {0};
+                int ret = Readn(i, head, 11);
+                if(ret <= 0)
+                {
+                    printf("peer close\n");
+                    fdclose(i, fd);
+                }
+                if(--nsel <= 0) break;
             }
-            if(--nsel <= 0) break;
         }
     }
 }
 
-void* readData(void * arg)
+//file description close
+void fdclose(int fd, int pipefd)
 {
-    Pthread_detach(pthread_self());
-    int fd = *(int *)arg;
-    free(fd);
-    char head[15] = {0};
-    int ret = Readn(user_pool->fds[i], head, 11);
-    if(ret <= 0)
+    if(user_pool->owner == fd) // room close
     {
-        printf("perr close\n");
+        //room close
+        user_pool->clear_room();
+        //write to father process
+        char cmd = 'E';
+        if(writen(pipefd, &cmd, 1) < 1)
+        {
+            err_msg("writen error");
+        }
+    }
+    else
+    {
         //delete fd from pool
         Pthread_mutex_lock(&user_pool->lock);
         FD_CLR(fd, &user_pool->fdset);
         user_pool->num--;
         user_pool->status[fd] = CLOSE;
+        if(fd == maxfd) maxfd--;
         Pthread_mutex_unlock(&user_pool->lock);
-    }
-    else
-    {
-        //read data
+
+        // msg ipv4
+        sockaddr_in peeraddr;
+        socklen_t addrlen;
+        getpeername(fd, (sockaddr *)&peeraddr, &addrlen);
+
+        close(fd);
+
+        MSG msg;
+        msg.msgType = PARTNER_EXIT;
+        msg.targetfd = -1;
+        msg.ip = peeraddr.sin_addr.s_addr; // network order
+        msg.ptr = NULL;
+        msg.len = 0;
+
+        sendqueue.push_msg(msg);
+
     }
 }
-
 
 void* accept_fd(void *arg) //accept fd from father
 {
@@ -128,7 +159,7 @@ void* accept_fd(void *arg) //accept fd from father
 
         //add to poll
         Pthread_mutex_lock(&user_pool->lock);
-        if(c == 'C')
+        if(c == 'C') // create
         {
             FD_SET(tfd, &user_pool->fdset);
             user_pool->owner = tfd;
@@ -136,9 +167,9 @@ void* accept_fd(void *arg) //accept fd from father
 //            user_pool->fds[user_pool->num++] = tfd;
             user_pool->status[tfd] = ON;
             maxfd = MAX(maxfd, tfd);
-
+            //printf("c %d\n", maxfd);
             //write room No to  tfd
-
+            roomstatus = ON; // set on
 
             MSG msg;
             msg.msgType = CREATE_MEETING_RESPONSE;
@@ -150,11 +181,19 @@ void* accept_fd(void *arg) //accept fd from father
             sendqueue.push_msg(msg);
 
         }
-        else if(c == 'J')
+        else if(c == 'J') // join
         {
-            if(user_pool->num > 1024)
+            if(roomstatus == CLOSE) // meeting close (owner close)
+            {
+                close(tfd);
+                Pthread_mutex_unlock(&user_pool->lock);
+                continue;
+            }
+
+            if(user_pool->num > 1024) // too large
             {
                 printf("room is too large\n");
+                close(tfd);
                 Pthread_mutex_unlock(&user_pool->lock);
                 continue;
             }
@@ -187,24 +226,49 @@ void *send_func(void *arg)
         int len = 0;
 
         sendbuf[len++] = '$';
+        short type = htons((short)msg.msgType);
+        memcpy(sendbuf + len, &type, sizeof(short)); //msgtype
 
         if(msg.msgType == CREATE_MEETING_RESPONSE)
         {
-            short type = htons((short)CREATE_MEETING_RESPONSE);
-            memcpy(sendbuf + len, &type, sizeof(short)); //msgtype
             len += 6;
-            int msglen = htonl(msg.len);
-            memcpy(sendbuf + len, &msglen, sizeof(int));
-            len += 4;
-            memcpy(sendbuf + len, msg.ptr, msg.len);
-            len += msg.len;
-            sendbuf[len++] = '#';
+        }
+        else if(msg.msgType == PARTNER_EXIT)
+        {
+            len+=2;
+            memcpy(sendbuf + len, msg.ip, sizeof(uint32_t));
+            len+=4;
+        }
+
+        int msglen = htonl(msg.len);
+        memcpy(sendbuf + len, &msglen, sizeof(int));
+        len += 4;
+        memcpy(sendbuf + len, msg.ptr, msg.len);
+        len += msg.len;
+        sendbuf[len++] = '#';
+
+        if(msg.msgType == CREATE_MEETING_RESPONSE)
+        {
             //send buf to target
             if(writen(msg.targetfd, sendbuf, len) < 0)
             {
                 err_msg("writen error");
             }
         }
+        else if(msg.msgType == PARTNER_EXIT)
+        {
+            for(int i = 0; i <= maxfd; i++)
+            {
+                if(user_pool->status[i] == ON)
+                {
+                    if(writen(i, sendbuf, len) < 0)
+                    {
+                        err_msg("writen error");
+                    }
+                }
+            }
+        }
+
 
         //free
         if(msg.ptr)
