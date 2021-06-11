@@ -7,6 +7,15 @@
 #include "netheader.h"
 #define MAXSIZE 10000
 #define MB (1024*1024)
+
+
+enum STATUS
+{
+
+    CLOSE = 0,
+    ON = 1,
+};
+
 struct MSG
 {
     char *ptr;

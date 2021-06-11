@@ -42,39 +42,53 @@ void* thread_main(void *arg)
 }
 
 
-
+/*
+ *
+ *read data from client
+ *
+ */
 
 void dowithuser(int connfd)
 {
     char head[15]  = {0};
-    ssize_t ret = Readn(connfd, head, 12);
+    //read head
+    ssize_t ret = Readn(connfd, head, 11);
     printf("%d\n", ret);
     if(ret <= 0)
     {
         printf("peer close\n");
     }
-    else if(ret < 12 || head[0] != '$')
+    else if(ret < 11)
     {
         printf("data len too short\n");
     }
+    else if(head[0] != '$')
+    {
+        printf("data format error\n");
+    }
     else
     {
-        //solve
-        uint32_t ip;
-        memcpy(&ip, head + 1, 4);
-        ip = ntohl(ip);
-
+        //solve datatype
         MSG_TYPE msgtype;
-        memcpy(&msgtype, head + 5, 2);
+        memcpy(&msgtype, head + 1, 2);
         msgtype = (MSG_TYPE)ntohs(msgtype);
 
-        uint32_t msgsize;
-        memcpy(&msgsize, head + 7, 4);
-        msgsize = ntohl(msgsize);
+        //solve ip
+        uint32_t ip;
+        memcpy(&ip, head + 3, 4);
+        ip = ntohl(ip);
+
+        //solve datasize
+        uint32_t datasize;
+        memcpy(&datasize, head + 7, 4);
+        datasize = ntohl(datasize);
+
+//        printf("%c  %d\n", head[11], datasize);
 
         if(msgtype == CREATE_MEETING)
         {
-            if(head[11] == '#' && msgsize == 12)
+            //read data from client
+            if(datasize == 0)
             {
                 char *c = (char *)&ip;
                 printf("create meeting  ip: %d.%d.%d.%d\n", (unsigned char )c[3], (unsigned char )c[2], (uint)c[1], (uint)c[0]);
@@ -116,7 +130,7 @@ void dowithuser(int connfd)
             }
             else
             {
-                printf("data format error\n");
+                printf("1 data format error\n");
             }
         }
         else

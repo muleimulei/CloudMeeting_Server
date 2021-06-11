@@ -16,13 +16,15 @@ typedef struct pool
     pthread_mutex_t lock;
     int owner;
     int num;
-    int fds[1024 + 10];
+//    int fds[1024 + 10];
+    int status[1024 + 10];
     pool()
     {
+        memset(status, 0, sizeof(status));
         owner = 0;
         FD_ZERO(&fdset);
         lock = PTHREAD_MUTEX_INITIALIZER;
-        memset(fds, 0, sizeof(fds));
+//        memset(fds, 0, sizeof(fds));
         num = 0;
     }
 
@@ -46,6 +48,8 @@ void process_main(int i, int fd) // room start
     pthread_t pfd1;
     void* accept_fd(void *);
     void* send_func(void *);
+    void* readData(void *);
+
     int *ptr = (int *)malloc(4);
     *ptr = fd;
     Pthread_create(&pfd1, NULL, accept_fd, ptr); // accept fd
@@ -53,7 +57,6 @@ void process_main(int i, int fd) // room start
     {
         Pthread_create(&pfd1, NULL, send_func, NULL);
     }
-
 
     //listen read data from fds
     for(;;)
@@ -64,7 +67,7 @@ void process_main(int i, int fd) // room start
         memset(&time, 0, sizeof(struct timeval));
         while((nsel =  Select(maxfd + 1, &rset, NULL, NULL, &time))== 0)
         {
-            rset = user_pool->fdset;
+            rset = user_pool->fdset; // make sure rset update
         }
 
         for(int i = 0; i < user_pool->num; i++)
@@ -72,11 +75,35 @@ void process_main(int i, int fd) // room start
             //check data arrive
             if(FD_ISSET(user_pool->fds[i], &rset))
             {
-                //read data
-                printf("%d data arrive\n", user_pool->fds[i]); // not finished
+                int *fd = (int *)malloc(sizeof(int));
+                *fd = user_pool->fds[i];
+                Pthread_create(&pfd1, NULL, readData, fd);
             }
             if(--nsel <= 0) break;
         }
+    }
+}
+
+void* readData(void * arg)
+{
+    Pthread_detach(pthread_self());
+    int fd = *(int *)arg;
+    free(fd);
+    char head[15] = {0};
+    int ret = Readn(user_pool->fds[i], head, 11);
+    if(ret <= 0)
+    {
+        printf("perr close\n");
+        //delete fd from pool
+        Pthread_mutex_lock(&user_pool->lock);
+        FD_CLR(fd, &user_pool->fdset);
+        user_pool->num--;
+        user_pool->status[fd] = CLOSE;
+        Pthread_mutex_unlock(&user_pool->lock);
+    }
+    else
+    {
+        //read data
     }
 }
 
@@ -105,14 +132,16 @@ void* accept_fd(void *arg) //accept fd from father
         {
             FD_SET(tfd, &user_pool->fdset);
             user_pool->owner = tfd;
-            user_pool->fds[user_pool->num++] = tfd;
+            user_pool->num++;
+//            user_pool->fds[user_pool->num++] = tfd;
+            user_pool->status[tfd] = ON;
             maxfd = MAX(maxfd, tfd);
 
             //write room No to  tfd
 
 
             MSG msg;
-            msg.msgType = (MSG_TYPE)htonl( CREATE_MEETING_RESPONSE );
+            msg.msgType = CREATE_MEETING_RESPONSE;
             msg.targetfd = tfd;
             int roomNo = htonl(getpid());
             msg.ptr = (char *) malloc(sizeof(int));
@@ -132,7 +161,9 @@ void* accept_fd(void *arg) //accept fd from father
             else
             {
                 FD_SET(tfd, &user_pool->fdset);
-                user_pool->fds[user_pool->num++] = tfd;
+                user_pool->num++;
+//                user_pool->fds[user_pool->num++] = tfd;
+                user_pool->status[tfd] = ON;
                 maxfd = MAX(maxfd, tfd);
             }
         }
@@ -159,14 +190,14 @@ void *send_func(void *arg)
 
         if(msg.msgType == CREATE_MEETING_RESPONSE)
         {
-
-            memcpy(sendbuf + len, &msg.msgType, sizeof(short)); //msgtype
+            short type = htons((short)CREATE_MEETING_RESPONSE);
+            memcpy(sendbuf + len, &type, sizeof(short)); //msgtype
             len += 6;
             int msglen = htonl(msg.len);
             memcpy(sendbuf + len, &msglen, sizeof(int));
-            len+=4;
+            len += 4;
             memcpy(sendbuf + len, msg.ptr, msg.len);
-            len+=msg.len;
+            len += msg.len;
             sendbuf[len++] = '#';
             //send buf to target
             if(writen(msg.targetfd, sendbuf, len) < 0)
