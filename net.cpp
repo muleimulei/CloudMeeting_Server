@@ -1,4 +1,19 @@
 #include "unp.h"
+/*
+ * get peer ipv4 (network order)
+ */
+uint32_t getpeerip(int fd)
+{
+    sockaddr_in peeraddr;
+    socklen_t addrlen;
+    if(getpeername(fd, (sockaddr *)&peeraddr, &addrlen) < 0)
+    {
+        err_msg("getpeername error");
+        return -1;
+    }
+    return peeraddr.sin_addr.s_addr;
+}
+
 
 int Select(int nfds, fd_set * readfds, fd_set * writefds, fd_set * execpfds, struct timeval *timeout)
 {

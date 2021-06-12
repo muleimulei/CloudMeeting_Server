@@ -10,7 +10,7 @@ enum USER_TYPE
     OWNER
 };
 static volatile int maxfd;
-STATUS roomstatus = ON;
+STATUS volatile roomstatus = ON;
 
 typedef struct pool
 {
@@ -36,7 +36,7 @@ typedef struct pool
         {
             if(status[i] == ON)
             {
-                close(i);
+                Close(i);
             }
         }
         memset(status, 0, sizeof(status));
@@ -99,6 +99,7 @@ void process_main(int i, int fd) // room start
 //file description close
 void fdclose(int fd, int pipefd)
 {
+
     if(user_pool->owner == fd) // room close
     {
         //room close
@@ -112,6 +113,8 @@ void fdclose(int fd, int pipefd)
     }
     else
     {
+        uint32_t getpeerip(int);
+
         //delete fd from pool
         Pthread_mutex_lock(&user_pool->lock);
         FD_CLR(fd, &user_pool->fdset);
@@ -121,21 +124,15 @@ void fdclose(int fd, int pipefd)
         Pthread_mutex_unlock(&user_pool->lock);
 
         // msg ipv4
-        sockaddr_in peeraddr;
-        socklen_t addrlen;
-        getpeername(fd, (sockaddr *)&peeraddr, &addrlen);
-
-        close(fd);
 
         MSG msg;
         msg.msgType = PARTNER_EXIT;
         msg.targetfd = -1;
-        msg.ip = peeraddr.sin_addr.s_addr; // network order
+        msg.ip = getpeerip(fd); // network order
         msg.ptr = NULL;
         msg.len = 0;
-
+        Close(fd);
         sendqueue.push_msg(msg);
-
     }
 }
 
@@ -158,9 +155,11 @@ void* accept_fd(void *arg) //accept fd from father
         }
 
         //add to poll
-        Pthread_mutex_lock(&user_pool->lock);
+
         if(c == 'C') // create
         {
+            Pthread_mutex_lock(&user_pool->lock); //lock
+
             FD_SET(tfd, &user_pool->fdset);
             user_pool->owner = tfd;
             user_pool->num++;
@@ -170,6 +169,8 @@ void* accept_fd(void *arg) //accept fd from father
             //printf("c %d\n", maxfd);
             //write room No to  tfd
             roomstatus = ON; // set on
+
+            Pthread_mutex_unlock(&user_pool->lock); //unlock
 
             MSG msg;
             msg.msgType = CREATE_MEETING_RESPONSE;
@@ -183,10 +184,11 @@ void* accept_fd(void *arg) //accept fd from father
         }
         else if(c == 'J') // join
         {
+            Pthread_mutex_lock(&user_pool->lock); //lock
             if(roomstatus == CLOSE) // meeting close (owner close)
             {
                 close(tfd);
-                Pthread_mutex_unlock(&user_pool->lock);
+                Pthread_mutex_unlock(&user_pool->lock); //unlock
                 continue;
             }
 
@@ -194,19 +196,30 @@ void* accept_fd(void *arg) //accept fd from father
             {
                 printf("room is too large\n");
                 close(tfd);
-                Pthread_mutex_unlock(&user_pool->lock);
+                Pthread_mutex_unlock(&user_pool->lock); //unlock
                 continue;
             }
             else
             {
+                uint32_t getpeerip(int);
                 FD_SET(tfd, &user_pool->fdset);
                 user_pool->num++;
 //                user_pool->fds[user_pool->num++] = tfd;
                 user_pool->status[tfd] = ON;
                 maxfd = MAX(maxfd, tfd);
+
+                Pthread_mutex_unlock(&user_pool->lock); //unlock
+
+                //broadcast
+                MSG msg;
+                msg.msgType = PARTNER_JOIN;
+                msg.ptr = NULL;
+                msg.len = 0;
+                msg.targetfd = -1;
+                msg.ip = getpeerip(tfd);
+                sendqueue.push_msg(msg);
             }
         }
-        Pthread_mutex_unlock(&user_pool->lock);
     }
     return NULL;
 }
@@ -233,10 +246,10 @@ void *send_func(void *arg)
         {
             len += 6;
         }
-        else if(msg.msgType == PARTNER_EXIT)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN)
         {
             len+=2;
-            memcpy(sendbuf + len, msg.ip, sizeof(uint32_t));
+            memcpy(sendbuf + len, &msg.ip, sizeof(uint32_t));
             len+=4;
         }
 
@@ -255,11 +268,11 @@ void *send_func(void *arg)
                 err_msg("writen error");
             }
         }
-        else if(msg.msgType == PARTNER_EXIT)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN)
         {
             for(int i = 0; i <= maxfd; i++)
             {
-                if(user_pool->status[i] == ON)
+                if(msg.targetfd == -1 && user_pool->status[i] == ON)
                 {
                     if(writen(i, sendbuf, len) < 0)
                     {

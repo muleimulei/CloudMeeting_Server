@@ -87,9 +87,14 @@ int main(int argc, char **argv)
             if(FD_ISSET(room->pptr[i].child_pipefd, &rset))
             {
                 int rc, n;
-                if(( n = Readn(room->pptr[i].child_pipefd, &rc, 1)) <= 0)
+                if((n = Readn(room->pptr[i].child_pipefd, &rc, 1)) <= 0)
                 {
                     err_quit("child %d terminated unexpectedly", i);
+                }
+                if(rc != 'E')
+                {
+                    err_msg("read from %d error", room->pptr[i].child_pipefd);
+                    continue;
                 }
                 pthread_mutex_lock(&room->lock);
                 room->pptr[i].child_status = 0;
