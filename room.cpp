@@ -84,11 +84,60 @@ void process_main(int i, int fd) // room start
             if(FD_ISSET(i, &rset))
             {
                 char head[15] = {0};
-                int ret = Readn(i, head, 11);
+                int ret = Readn(i, head, 11); // head size = 11
                 if(ret <= 0)
                 {
                     printf("peer close\n");
                     fdclose(i, fd);
+                }
+                else if(ret == 11)
+                {
+                    if(head[0] == '$')
+                    {
+                        //solve datatype
+                        MSG_TYPE msgtype;
+                        memcpy(&msgtype, head + 1, 2);
+                        msgtype = (MSG_TYPE)ntohs(msgtype);
+
+                        MSG msg;
+                        memset(&msg, 0, sizeof(MSG));
+                        if(msgtype == IMG_SEND)
+                        {
+                            msg.msgType = IMG_RECV;
+                            msg.targetfd = -1;
+                            memcpy(&msg.ip, head + 3, 4);
+                            int msglen;
+                            memcpy(&msglen, head + 7, 4);
+                            msg.len = ntohl(msglen);
+
+                            msg.ptr = (char *)malloc(msg.len);
+                            if((ret = Readn(i, msg.ptr, msg.len)) < msg.len)
+                            {
+                                err_msg("3 msg format error");
+                            }
+                            else
+                            {
+                                int tail;
+                                Readn(i, &tail, 1);
+                                if(tail != '#')
+                                {
+                                    err_msg("4 msg format error");
+                                }
+                                else
+                                {
+                                    sendqueue.push_msg(msg);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        err_msg("1 msg format error");
+                    }
+                }
+                else
+                {
+                    err_msg("2 msg format error");
                 }
                 if(--nsel <= 0) break;
             }
@@ -122,6 +171,12 @@ void fdclose(int fd, int pipefd)
         user_pool->status[fd] = CLOSE;
         if(fd == maxfd) maxfd--;
         Pthread_mutex_unlock(&user_pool->lock);
+
+        char cmd = 'Q';
+        if(writen(pipefd, &cmd, 1) < 1)
+        {
+            err_msg("write error");
+        }
 
         // msg ipv4
 
@@ -192,13 +247,13 @@ void* accept_fd(void *arg) //accept fd from father
                 continue;
             }
 
-            if(user_pool->num > 1024) // too large
-            {
-                printf("room is too large\n");
-                close(tfd);
-                Pthread_mutex_unlock(&user_pool->lock); //unlock
-                continue;
-            }
+//            if(user_pool->num > 1024) // too large
+//            {
+//                printf("room is too large\n");
+//                close(tfd);
+//                Pthread_mutex_unlock(&user_pool->lock); //unlock
+//                continue;
+//            }
             else
             {
                 uint32_t getpeerip(int);
@@ -241,14 +296,14 @@ void *send_func(void *arg)
         sendbuf[len++] = '$';
         short type = htons((short)msg.msgType);
         memcpy(sendbuf + len, &type, sizeof(short)); //msgtype
+        len+=2;
 
         if(msg.msgType == CREATE_MEETING_RESPONSE)
         {
-            len += 6;
+            len += 4;
         }
-        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN || msg.msgType == IMG_RECV)
         {
-            len+=2;
             memcpy(sendbuf + len, &msg.ip, sizeof(uint32_t));
             len+=4;
         }
@@ -268,7 +323,7 @@ void *send_func(void *arg)
                 err_msg("writen error");
             }
         }
-        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN || msg.msgType == IMG_RECV)
         {
             for(int i = 0; i <= maxfd; i++)
             {
@@ -282,11 +337,11 @@ void *send_func(void *arg)
             }
         }
 
-
         //free
         if(msg.ptr)
         {
             free(msg.ptr);
+            msg.ptr = NULL;
         }
     }
 

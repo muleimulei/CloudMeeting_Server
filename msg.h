@@ -23,6 +23,8 @@ struct MSG
     int targetfd;
     MSG_TYPE msgType;
     uint32_t ip;
+    Image_Format format;
+
     MSG()
     {
 

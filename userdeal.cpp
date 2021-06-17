@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "unp.h"
 #include "netheader.h"
+#include "msg.h"
 
 pthread_mutex_t mlock = PTHREAD_MUTEX_INITIALIZER; // accept lock
 extern socklen_t addrlen;
@@ -17,7 +18,7 @@ void* thread_main(void *arg)
     int connfd;
     Pthread_detach(pthread_self()); //detach child thread
 
-    printf("thread %d starting\n", i);
+//    printf("thread %d starting\n", i);
 
     SA *cliaddr;
     socklen_t clilen;
@@ -50,10 +51,11 @@ void* thread_main(void *arg)
 
 void dowithuser(int connfd)
 {
+    void writetofd(int fd, MSG msg);
+
     char head[15]  = {0};
     //read head
     ssize_t ret = Readn(connfd, head, 11);
-    printf("%d\n", ret);
     if(ret <= 0)
     {
         printf("peer close\n");
@@ -83,7 +85,7 @@ void dowithuser(int connfd)
         memcpy(&datasize, head + 7, 4);
         datasize = ntohl(datasize);
 
-//        printf("%c  %d\n", head[11], datasize);
+//        printf("msg type %d\n", msgtype);
 
         if(msgtype == CREATE_MEETING)
         {
@@ -93,10 +95,16 @@ void dowithuser(int connfd)
             if(datasize == 0 && tail == '#')
             {
                 char *c = (char *)&ip;
-                printf("create meeting  ip: %d.%d.%d.%d\n", (unsigned char )c[3], (unsigned char )c[2], (uint)c[1], (uint)c[0]);
-                if(room->navail <=0)
+                printf("create meeting  ip: %d.%d.%d.%d\n", (u_char)c[3], (u_char)c[2], (u_char)c[1], (u_char)c[0]);
+                if(room->navail <=0) // no room
                 {
-                    write(connfd, "NoRoom", 7);
+                    MSG msg;
+                    msg.msgType = CREATE_MEETING_RESPONSE;
+                    int roomNo = 0;
+                    msg.ptr = (char *) malloc(sizeof(int));
+                    memcpy(msg.ptr, &roomNo, sizeof(int));
+                    msg.len = sizeof(roomNo);
+                    writetofd(connfd, msg);
                 }
                 else
                 {
@@ -110,7 +118,13 @@ void dowithuser(int connfd)
                     }
                     if(i == nprocesses) //no room empty
                     {
-                        write(connfd, "NoRoom", 7);
+                        MSG msg;
+                        msg.msgType = CREATE_MEETING_RESPONSE;
+                        int roomNo = 0;
+                        msg.ptr = (char *) malloc(sizeof(int));
+                        memcpy(msg.ptr, &roomNo, sizeof(int));
+                        msg.len = sizeof(roomNo);
+                        writetofd(connfd, msg);
                     }
                     else
                     {
@@ -124,6 +138,7 @@ void dowithuser(int connfd)
                             printf("room %d empty\n", room->pptr[i].child_pid);
                             room->pptr[i].child_status = 1; // occupy
                             room->navail--;
+                            room->pptr[i].total++;
                         }
                     }
                     Pthread_mutex_unlock(&room->lock);
@@ -135,11 +150,121 @@ void dowithuser(int connfd)
                 printf("1 data format error\n");
             }
         }
+        else if(msgtype == JOIN_MEETING)
+        {
+            //read msgsize
+            int msgsize, roomno;
+            memcpy(&msgsize, head + 7, 4);
+            msgsize = ntohl(msgsize);
+            //read data + #
+            int r =  Readn(connfd, head, msgsize + 1 );
+            if(r < msgsize + 1)
+            {
+                printf("data too short\n");
+            }
+            else
+            {
+                if(head[msgsize] == '#')
+                {
+                    memcpy(&roomno, head, msgsize);
+                    roomno = ntohl(roomno);
+                    printf("room : %d\n", roomno);
+                    //find room no
+                    bool ok = false;
+                    int i;
+                    for(i = 0; i < nprocesses; i++)
+                    {
+                        if(room->pptr[i].child_pid == roomno && room->pptr[i].child_status == 1)
+                        {
+                            ok = true; //find room
+                        }
+                    }
+
+                    MSG msg;
+                    msg.msgType = JOIN_MEETING_RESPONSE;
+                    msg.len = 1;
+                    if(ok)
+                    {
+                        if(room->pptr[i].total >= 1024)
+                        {
+                            msg.ptr = (char *)malloc(msg.len);
+                            *(msg.ptr) = 2; // full
+                            writetofd(connfd, msg);
+                        }
+                        else
+                        {
+                            Pthread_mutex_lock(&room->lock);
+
+                            char cmd = 'J';
+                            if(write_fd(room->pptr[i].child_pipefd, &cmd, 1, connfd) < 0)
+                            {
+                                printf("write fd error\n");
+                            }
+                            else
+                            {
+                                msg.ptr = (char *)malloc(msg.len);
+                                *(msg.ptr) = 1; // success
+                                writetofd(connfd, msg);
+                                room->pptr[i].total++;// add 1
+                            }
+                            Pthread_mutex_unlock(&room->lock);
+                        }
+                    }
+                    else
+                    {
+                        msg.ptr = (char *)malloc(msg.len);
+                        *(msg.ptr) = 0; //fail
+                        writetofd(connfd, msg);
+                    }
+                }
+                else
+                {
+                    printf("format error\n");
+                }
+            }
+        }
         else
         {
             printf("data format error\n");
         }
     }
-
 }
 
+
+void writetofd(int fd, MSG msg)
+{
+    char *buf = (char *) malloc(100);
+    memset(buf, 0, 100);
+    int bytestowrite = 0;
+    buf[bytestowrite++] = '$';
+
+    uint16_t type = msg.msgType;
+    type = htons(type);
+    memcpy(buf + bytestowrite, &type, sizeof(uint16_t));
+
+    bytestowrite += 2;//skip type
+
+    bytestowrite += 4; //skip ip
+
+    uint32_t size = msg.len;
+    size = htonl(size);
+    memcpy(buf + bytestowrite, &size, sizeof(uint32_t));
+    bytestowrite += 4;
+
+    memcpy(buf + bytestowrite, msg.ptr, msg.len);
+    bytestowrite += msg.len;
+
+    buf[bytestowrite++] = '#';
+
+    if(writen(fd, buf, bytestowrite) < bytestowrite)
+    {
+        printf("write fail\n");
+    }
+
+    if(msg.ptr)
+    {
+        free(msg.ptr);
+        msg.ptr = NULL;
+    }
+    free(buf);
+}

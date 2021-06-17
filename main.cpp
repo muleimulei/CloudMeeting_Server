@@ -72,12 +72,7 @@ int main(int argc, char **argv)
     {
         //listen
         rset = masterset;
-        // use out of room
-//        if(room->navail <=0)
-//        {
-//            printf("use out of room\n");
-//            continue;
-//        }
+
         int nsel = Select(maxfd + 1, &rset, NULL, NULL, NULL);
         if(nsel == 0) continue;
 
@@ -91,18 +86,26 @@ int main(int argc, char **argv)
                 {
                     err_quit("child %d terminated unexpectedly", i);
                 }
-                if(rc != 'E')
+                if(rc == 'E') // room empty
+                {
+                    pthread_mutex_lock(&room->lock);
+                    room->pptr[i].child_status = 0;
+                    room->navail++;
+                    printf("room %d is now free\n", room->pptr[i].child_pid);
+                    pthread_mutex_unlock(&room->lock);
+
+                }
+                else if(rc == 'Q') // partner quit
+                {
+                    Pthread_mutex_lock(&room->lock);
+                    room->pptr[i].total--;
+                    Pthread_mutex_unlock(&room->lock);
+                }
+                else // trash data
                 {
                     err_msg("read from %d error", room->pptr[i].child_pipefd);
                     continue;
                 }
-                pthread_mutex_lock(&room->lock);
-                room->pptr[i].child_status = 0;
-                room->navail++;
-                printf("room %d is now free\n", room->pptr[i].child_pid);
-                pthread_mutex_unlock(&room->lock);
-
-
                 if(--nsel == 0) break; /*all done with select results*/
             }
 
@@ -135,6 +138,7 @@ int process_make(int i, int listenfd)
         room->pptr[i].child_pid = pid;
         room->pptr[i].child_pipefd = sockfd[0];
         room->pptr[i].child_status = 0;
+        room->pptr[i].total = 0;
         return pid; // father
     }
 
