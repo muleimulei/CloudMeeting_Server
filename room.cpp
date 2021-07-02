@@ -236,6 +236,8 @@ void* accept_fd(void *arg) //accept fd from father
             msg.len = sizeof(int);
             sendqueue.push_msg(msg);
 
+            printf("create meeting: %d\n", tfd);
+
         }
         else if(c == 'J') // join
         {
@@ -246,14 +248,6 @@ void* accept_fd(void *arg) //accept fd from father
                 Pthread_mutex_unlock(&user_pool->lock); //unlock
                 continue;
             }
-
-//            if(user_pool->num > 1024) // too large
-//            {
-//                printf("room is too large\n");
-//                close(tfd);
-//                Pthread_mutex_unlock(&user_pool->lock); //unlock
-//                continue;
-//            }
             else
             {
                 uint32_t getpeerip(int);
@@ -272,7 +266,9 @@ void* accept_fd(void *arg) //accept fd from father
                 msg.len = 0;
                 msg.targetfd = -1;
                 msg.ip = getpeerip(tfd);
+
                 sendqueue.push_msg(msg);
+                printf("join meeting: %d\n", tfd);
             }
         }
     }
@@ -329,6 +325,7 @@ void *send_func(void *arg)
             {
                 if(msg.targetfd == -1 && user_pool->status[i] == ON)
                 {
+                    printf("i = %d\n", i);
                     if(writen(i, sendbuf, len) < 0)
                     {
                         err_msg("writen error");

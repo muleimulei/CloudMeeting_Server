@@ -99,6 +99,7 @@ void dowithuser(int connfd)
                 if(room->navail <=0) // no room
                 {
                     MSG msg;
+                    memset(&msg, 0, sizeof(msg));
                     msg.msgType = CREATE_MEETING_RESPONSE;
                     int roomNo = 0;
                     msg.ptr = (char *) malloc(sizeof(int));
@@ -119,6 +120,7 @@ void dowithuser(int connfd)
                     if(i == nprocesses) //no room empty
                     {
                         MSG msg;
+                        memset(&msg, 0, sizeof(msg));
                         msg.msgType = CREATE_MEETING_RESPONSE;
                         int roomNo = 0;
                         msg.ptr = (char *) malloc(sizeof(int));
@@ -168,7 +170,7 @@ void dowithuser(int connfd)
                 {
                     memcpy(&roomno, head, msgsize);
                     roomno = ntohl(roomno);
-                    printf("room : %d\n", roomno);
+//                    printf("room : %d\n", roomno);
                     //find room no
                     bool ok = false;
                     int i;
@@ -177,10 +179,12 @@ void dowithuser(int connfd)
                         if(room->pptr[i].child_pid == roomno && room->pptr[i].child_status == 1)
                         {
                             ok = true; //find room
+                            break;
                         }
                     }
 
                     MSG msg;
+                    memset(&msg, 0, sizeof(msg));
                     msg.msgType = JOIN_MEETING_RESPONSE;
                     msg.len = 1;
                     if(ok)
@@ -196,9 +200,10 @@ void dowithuser(int connfd)
                             Pthread_mutex_lock(&room->lock);
 
                             char cmd = 'J';
+//                            printf("i  =  %d\n", i);
                             if(write_fd(room->pptr[i].child_pipefd, &cmd, 1, connfd) < 0)
                             {
-                                printf("write fd error\n");
+                                err_msg("write fd:");
                             }
                             else
                             {
