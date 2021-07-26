@@ -1,6 +1,7 @@
 #include "unpthread.h"
 #include "msg.h"
 #include "unp.h"
+#include <map>
 #define SENDTHREADSIZE 5
 SEND_QUEUE sendqueue; //save data
 
@@ -19,6 +20,7 @@ typedef struct pool
     int owner;
     int num;
     int status[1024 + 10];
+    std::map<int, uint32_t> fdToIp;
     pool()
     {
         memset(status, 0, sizeof(status));
@@ -43,6 +45,8 @@ typedef struct pool
         num = 0;
         owner = 0;
         FD_ZERO(&fdset);
+        fdToIp.clear();
+        sendqueue.clear();
         Pthread_mutex_unlock(&lock);
     }
 }Pool;
@@ -104,13 +108,13 @@ void process_main(int i, int fd) // room start
                         if(msgtype == IMG_SEND)
                         {
                             msg.msgType = IMG_RECV;
-                            msg.targetfd = -1;
+                            msg.targetfd = i;
                             memcpy(&msg.ip, head + 3, 4);
                             int msglen;
                             memcpy(&msglen, head + 7, 4);
                             msg.len = ntohl(msglen);
-
                             msg.ptr = (char *)malloc(msg.len);
+                            msg.ip = user_pool->fdToIp[i];
                             if((ret = Readn(i, msg.ptr, msg.len)) < msg.len)
                             {
                                 err_msg("3 msg format error");
@@ -163,9 +167,10 @@ void fdclose(int fd, int pipefd)
     else
     {
         uint32_t getpeerip(int);
-
+        uint32_t ip;
         //delete fd from pool
         Pthread_mutex_lock(&user_pool->lock);
+        ip = user_pool->fdToIp[fd];
         FD_CLR(fd, &user_pool->fdset);
         user_pool->num--;
         user_pool->status[fd] = CLOSE;
@@ -181,11 +186,10 @@ void fdclose(int fd, int pipefd)
         // msg ipv4
 
         MSG msg;
+        memset(&msg, 0, sizeof(MSG));
         msg.msgType = PARTNER_EXIT;
         msg.targetfd = -1;
-        msg.ip = getpeerip(fd); // network order
-        msg.ptr = NULL;
-        msg.len = 0;
+        msg.ip = ip; // network order
         Close(fd);
         sendqueue.push_msg(msg);
     }
@@ -193,6 +197,7 @@ void fdclose(int fd, int pipefd)
 
 void* accept_fd(void *arg) //accept fd from father
 {
+    uint32_t getpeerip(int);
     Pthread_detach(pthread_self());
     int fd = *(int *)arg, tfd = -1;
     free(arg);
@@ -217,6 +222,7 @@ void* accept_fd(void *arg) //accept fd from father
 
             FD_SET(tfd, &user_pool->fdset);
             user_pool->owner = tfd;
+            user_pool->fdToIp[tfd] = getpeerip(tfd);
             user_pool->num++;
 //            user_pool->fds[user_pool->num++] = tfd;
             user_pool->status[tfd] = ON;
@@ -236,7 +242,7 @@ void* accept_fd(void *arg) //accept fd from father
             msg.len = sizeof(int);
             sendqueue.push_msg(msg);
 
-            printf("create meeting: %d\n", tfd);
+//            printf("create meeting: %d\n", tfd);
 
         }
         else if(c == 'J') // join
@@ -250,25 +256,49 @@ void* accept_fd(void *arg) //accept fd from father
             }
             else
             {
-                uint32_t getpeerip(int);
+
                 FD_SET(tfd, &user_pool->fdset);
                 user_pool->num++;
 //                user_pool->fds[user_pool->num++] = tfd;
                 user_pool->status[tfd] = ON;
                 maxfd = MAX(maxfd, tfd);
-
+                user_pool->fdToIp[tfd] = getpeerip(tfd);
                 Pthread_mutex_unlock(&user_pool->lock); //unlock
 
-                //broadcast
+                //broadcast to others
                 MSG msg;
+                memset(&msg, 0, sizeof(MSG));
                 msg.msgType = PARTNER_JOIN;
                 msg.ptr = NULL;
                 msg.len = 0;
-                msg.targetfd = -1;
-                msg.ip = getpeerip(tfd);
-
+                msg.targetfd = tfd;
+                msg.ip = user_pool->fdToIp[tfd];
                 sendqueue.push_msg(msg);
-                printf("join meeting: %d\n", tfd);
+
+                //broadcast to others
+                MSG msg1;
+                memset(&msg1, 0, sizeof(MSG));
+                msg1.msgType = PARTNER_JOIN2;
+                msg1.targetfd = tfd;
+                int size = user_pool->num * sizeof(uint32_t);
+
+                msg1.ptr = (char *)malloc(size);
+                int pos = 0;
+
+                for(int i = 0; i <= maxfd; i++)
+                {
+                    if(user_pool->status[i] == ON && i != tfd)
+                    {
+                        uint32_t ip = user_pool->fdToIp[i];
+                        memcpy(msg1.ptr + pos, &ip, sizeof(uint32_t));
+                        pos += sizeof(uint32_t);
+                        msg1.len += sizeof(uint32_t);
+                    }
+                }
+                printf("msg->len = %d\n", msg1.len);
+                sendqueue.push_msg(msg1);
+
+                printf("join meeting: %d\n", msg.ip);
             }
         }
     }
@@ -294,7 +324,7 @@ void *send_func(void *arg)
         memcpy(sendbuf + len, &type, sizeof(short)); //msgtype
         len+=2;
 
-        if(msg.msgType == CREATE_MEETING_RESPONSE)
+        if(msg.msgType == CREATE_MEETING_RESPONSE || msg.msgType == PARTNER_JOIN2)
         {
             len += 4;
         }
@@ -319,13 +349,38 @@ void *send_func(void *arg)
                 err_msg("writen error");
             }
         }
-        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN || msg.msgType == IMG_RECV)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == IMG_RECV)
         {
             for(int i = 0; i <= maxfd; i++)
             {
-                if(msg.targetfd == -1 && user_pool->status[i] == ON)
+                if(user_pool->status[i] == ON && msg.targetfd != i)
                 {
-                    printf("i = %d\n", i);
+                    if(writen(i, sendbuf, len) < 0)
+                    {
+                        err_msg("writen error");
+                    }
+                }
+            }
+        }
+        else if(msg.msgType == PARTNER_JOIN)
+        {
+            for(int i = 0; i <= maxfd; i++)
+            {
+                if(user_pool->status[i] == ON && i != msg.targetfd)
+                {
+                    if(writen(i, sendbuf, len) < 0)
+                    {
+                        err_msg("writen error");
+                    }
+                }
+            }
+        }
+        else if(msg.msgType == PARTNER_JOIN2)
+        {
+            for(int i = 0; i <= maxfd; i++)
+            {
+                if(user_pool->status[i] == ON && i == msg.targetfd)
+                {
                     if(writen(i, sendbuf, len) < 0)
                     {
                         err_msg("writen error");

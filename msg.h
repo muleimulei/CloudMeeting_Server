@@ -77,6 +77,15 @@ public:
         Pthread_cond_signal(&cond);
         return msg;
     }
+    void clear()
+    {
+        Pthread_mutex_lock(&lock);
+        while(!send_queue.empty())
+        {
+            send_queue.pop();
+        }
+        Pthread_mutex_unlock(&lock);
+    }
 };
 
 #endif // MSG_H

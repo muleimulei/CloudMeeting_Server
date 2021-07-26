@@ -17,6 +17,7 @@ enum MSG_TYPE
     PARTNER_EXIT = 21,
     PARTNER_JOIN = 22,
     JOIN_MEETING_RESPONSE = 23,
+    PARTNER_JOIN2 = 24
 
 };
 enum Image_Format {
