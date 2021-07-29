@@ -58,6 +58,7 @@ void process_main(int i, int fd) // room start
 {
     //create accpet fd thread
     printf("room %d starting \n", getpid());
+    Signal(SIGPIPE, SIG_IGN);
     pthread_t pfd1;
     void* accept_fd(void *);
     void* send_func(void *);
