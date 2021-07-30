@@ -106,9 +106,9 @@ void process_main(int i, int fd) // room start
 
                         MSG msg;
                         memset(&msg, 0, sizeof(MSG));
-                        if(msgtype == IMG_SEND)
+                        if(msgtype == IMG_SEND || msgtype == AUDIO_SEND)
                         {
-                            msg.msgType = IMG_RECV;
+                            msg.msgType = (msgtype == IMG_SEND) ? IMG_RECV : AUDIO_RECV;
                             msg.targetfd = i;
                             memcpy(&msg.ip, head + 3, 4);
                             int msglen;
@@ -158,6 +158,7 @@ void fdclose(int fd, int pipefd)
     {
         //room close
         user_pool->clear_room();
+		printf("clear room\n");
         //write to father process
         char cmd = 'E';
         if(writen(pipefd, &cmd, 1) < 1)
@@ -296,7 +297,6 @@ void* accept_fd(void *arg) //accept fd from father
                         msg1.len += sizeof(uint32_t);
                     }
                 }
-                printf("msg->len = %d\n", msg1.len);
                 sendqueue.push_msg(msg1);
 
                 printf("join meeting: %d\n", msg.ip);
@@ -329,7 +329,7 @@ void *send_func(void *arg)
         {
             len += 4;
         }
-        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN || msg.msgType == IMG_RECV)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN || msg.msgType == IMG_RECV || msg.msgType == AUDIO_RECV)
         {
             memcpy(sendbuf + len, &msg.ip, sizeof(uint32_t));
             len+=4;
@@ -350,7 +350,7 @@ void *send_func(void *arg)
                 err_msg("writen error");
             }
         }
-        else if(msg.msgType == PARTNER_EXIT || msg.msgType == IMG_RECV)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == IMG_RECV || msg.msgType == AUDIO_RECV)
         {
             for(int i = 0; i <= maxfd; i++)
             {

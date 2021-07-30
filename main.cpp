@@ -81,11 +81,13 @@ int main(int argc, char **argv)
         {
             if(FD_ISSET(room->pptr[i].child_pipefd, &rset))
             {
-                int rc, n;
+                char rc;
+				int  n;
                 if((n = Readn(room->pptr[i].child_pipefd, &rc, 1)) <= 0)
                 {
                     err_quit("child %d terminated unexpectedly", i);
                 }
+				printf("c = %c\n", rc);
                 if(rc == 'E') // room empty
                 {
                     pthread_mutex_lock(&room->lock);
