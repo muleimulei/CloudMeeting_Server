@@ -106,14 +106,15 @@ void process_main(int i, int fd) // room start
 
                         MSG msg;
                         memset(&msg, 0, sizeof(MSG));
+						msg.targetfd = i;
+						memcpy(&msg.ip, head + 3, 4);
+						int msglen;
+						memcpy(&msglen, head + 7, 4);
+						msg.len = ntohl(msglen);
+
                         if(msgtype == IMG_SEND || msgtype == AUDIO_SEND)
                         {
                             msg.msgType = (msgtype == IMG_SEND) ? IMG_RECV : AUDIO_RECV;
-                            msg.targetfd = i;
-                            memcpy(&msg.ip, head + 3, 4);
-                            int msglen;
-                            memcpy(&msglen, head + 7, 4);
-                            msg.len = ntohl(msglen);
                             msg.ptr = (char *)malloc(msg.len);
                             msg.ip = user_pool->fdToIp[i];
                             if((ret = Readn(i, msg.ptr, msg.len)) < msg.len)
@@ -134,6 +135,20 @@ void process_main(int i, int fd) // room start
                                 }
                             }
                         }
+						else if(msgtype == CLOSE_CAMERA)
+						{
+							char tail;
+							Readn(i, &tail, 1);
+							if(tail == '#' && msg.len == 0)
+							{
+								msg.msgType = CLOSE_CAMERA;
+								sendqueue.push_msg(msg);
+							}
+							else
+							{
+								err_msg("camera data error ");
+							}
+						}
                     }
                     else
                     {
@@ -329,7 +344,7 @@ void *send_func(void *arg)
         {
             len += 4;
         }
-        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN || msg.msgType == IMG_RECV || msg.msgType == AUDIO_RECV)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == PARTNER_JOIN || msg.msgType == IMG_RECV || msg.msgType == AUDIO_RECV || msg.msgType == CLOSE_CAMERA)
         {
             memcpy(sendbuf + len, &msg.ip, sizeof(uint32_t));
             len+=4;
@@ -350,7 +365,7 @@ void *send_func(void *arg)
                 err_msg("writen error");
             }
         }
-        else if(msg.msgType == PARTNER_EXIT || msg.msgType == IMG_RECV || msg.msgType == AUDIO_RECV)
+        else if(msg.msgType == PARTNER_EXIT || msg.msgType == IMG_RECV || msg.msgType == AUDIO_RECV || msg.msgType == CLOSE_CAMERA)
         {
             for(int i = 0; i <= maxfd; i++)
             {
@@ -397,6 +412,7 @@ void *send_func(void *arg)
             msg.ptr = NULL;
         }
     }
+	free(sendbuf);
 
     return NULL;
 }
